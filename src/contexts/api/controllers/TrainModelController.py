@@ -1,30 +1,39 @@
 import os
 import joblib
-import numpy as np
-import os
-
+import pandas as pd
 from src.contexts.api.models import PredictorRequest
-
-
 
 class TrainModelController:
     def execute(self, request: PredictorRequest):
-        print(request)
-        sex=request.sex.value
-        nuevo=request.nuevo
-       
-        lr_model_path = os.getenv("MODELO_ENTRENADO")
-       
-        # Cargar el modelo desde el archivo
+        print(f"Petición recibida: {request}")
+        
+        lr_model_path = os.getenv("MODELO_ENTRENADO", "modelo_genero.joblib")
+        
+        if not os.path.exists(lr_model_path):
+            return {"status": "ERROR", "message": "El modelo no ha sido entrenado o el archivo no existe."}
+
+        # Cargar el pipeline/modelo guardado
         modelo_cargado = joblib.load(lr_model_path)
 
-        # Crear un nuevo dato para predecir
-        nuevo_dato = np.array([[nuevo]])  # X = 6
+        # Formatear la entrada en un DataFrame idéntico al de entrenamiento
+        nuevo_dato = pd.DataFrame([{
+            'tipo_correo': request.tipo_correo,
+            'pais': request.pais,
+            'ciudad': request.ciudad
+        }])
 
-        # Hacer la predicción
-        result = modelo_cargado.predict(nuevo_dato)
-        print(f"Predicción para X=6: {result[0][0]}")
+        # Realizar la predicción
+        prediccion = modelo_cargado.predict(nuevo_dato)
+        genero_predicho = prediccion[0]
         
-        return {"status": "OK", "result": result[0][0]}
-
-    
+        print(f"Predicción para el cliente: {genero_predicho}")
+        
+        return {
+            "status": "OK", 
+            "resultado": {
+                "tipo_correo": request.tipo_correo,
+                "pais": request.pais,
+                "ciudad": request.ciudad,
+                "genero_musical_predicho": genero_predicho
+            }
+        }
