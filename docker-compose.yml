@@ -33,11 +33,11 @@ services:
     environment:
       PORT: 8000
       VIRTUAL_HOST: api.ralejandro.com
-      VIRTUAL_PORT: 8000
+      VIRTUAL_PORT: 8001
       LETSENCRYPT_HOST: api.ralejandro.com
       LETSENCRYPT_EMAIL: ralejandrobm@gmail.com
     ports:
-      - '8000:8000'
+      - '8001:8001'
     restart: "always"
     networks:
       - web
