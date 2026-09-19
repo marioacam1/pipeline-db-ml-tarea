@@ -22,3 +22,4 @@ class PredictorRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("La ciudad no puede estar vacía.")
         return v.strip()
+
