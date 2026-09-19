@@ -1,20 +1,20 @@
-import numpy as np
+import os
 import joblib
 import pandas as pd
 import psycopg2
-import os
 from dotenv import load_dotenv
 
-
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report
 
 class TrainModel:
 
+    @staticmethod
     def entrenarModelo():
-
-        #se usaron las credeciales para ingresar de manera ocacional (Transaction pooler)
         load_dotenv("/app/.env")
         USER = os.getenv("SUPABASE_USER")
         PASSWORD = os.getenv("SUPABASE_PASSWORD")
@@ -22,13 +22,11 @@ class TrainModel:
         PORT = os.getenv("SUPABASE_PORT")
         DBNAME = os.getenv("SUPABASE_DBNAME")
         
-
-        if(PORT== None):
-            print("no se lee el env")
+        if PORT is None:
+            print("No se lee el archivo .env")
             return
         else:
-            print("si se lee en env")
-
+            print("Se lee correctamente el .env")
 
         try:
             with psycopg2.connect(
@@ -38,38 +36,55 @@ class TrainModel:
                 port=PORT,
                 dbname=DBNAME
             ) as connection:
-                with connection.cursor() as cursor:
-                    # Consulta SQL
-                    cursor.execute('SELECT x, y FROM "Dataset";')
-                    rows = cursor.fetchall()  # devuelve una lista de tuplas [(x1,y1),(x2,y2),...]
-                    
-                    print(f"Filas recuperadas: {len(rows)}")
+                # Cargar vista directamente a un DataFrame de Pandas
+                query = 'SELECT tipo_correo, pais, ciudad, genero_musical FROM vista_cliente_genero;'
+                df = pd.read_sql_query(query, connection)
+                print(f"Filas recuperadas: {len(df)}")
 
         except Exception as e:
             print(f"Error al conectar o recuperar datos: {e}")
             return
         
-        if not rows:
+        if df.empty:
             print("No se recuperaron filas de la base de datos. Abortando entrenamiento.")
             return
-        else:
-            print(rows[:2])
-            
-
-        # Convertir la lista de tuplas a un array de NumPy
-        data_array = np.array(rows)  # shape (num_filas, 2)
-
-        # Separar columnas
-        x = data_array[:, 0].reshape(-1, 1)  # 100 x 1
-        y = data_array[:, 1].reshape(-1, 1)  # 100 x 1
-
-        #dividir en entranamiento y prueba
-        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
         
-        #entrenar el modelo
-        
-        model = LinearRegression()
-        model.fit(x_train, y_train)
-        joblib.dump(model, str(os.getenv("MODELO_ENTRENADO")))
-        print("modelo entrenado")
-        
+        print("Muestra de datos recuperados:")
+        print(df.head(2))
+
+        # Separar variables predictoras (X) y variable objetivo (y)
+        X = df[['tipo_correo', 'pais', 'ciudad']]
+        y = df['genero_musical']
+
+        # Dividir datos en entrenamiento y prueba
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+
+        # Preprocesamiento de variables categóricas
+        categorical_features = ['tipo_correo', 'pais', 'ciudad']
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
+            ]
+        )
+
+        # Crear el Pipeline con Preprocesamiento + Modelo
+        pipeline = Pipeline(steps=[
+            ('preprocessor', preprocessor),
+            ('classifier', RandomForestClassifier(n_estimators=100, random_state=42))
+        ])
+
+        # Entrenar el pipeline completo
+        pipeline.fit(X_train, y_train)
+
+        # Evaluar el modelo
+        y_pred = pipeline.predict(X_test)
+        print(f"Exactitud (Accuracy): {accuracy_score(y_test, y_pred):.4f}")
+        print("\nReporte de Clasificación:")
+        print(classification_report(y_test, y_pred))
+
+        # Guardar el pipeline entrenado
+        model_path = os.getenv("MODELO_ENTRENADO", "modelo_genero.joblib")
+        joblib.dump(pipeline, model_path)
+        print(f"Modelo entrenado y guardado exitosamente en: {model_path}")
